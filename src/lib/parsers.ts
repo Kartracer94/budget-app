@@ -1,4 +1,4 @@
-import { Transaction, ImportResult, categorize, isTransferCategory } from "./types";
+import { Transaction, ImportResult, categorize } from "./types";
 
 let idCounter = 0;
 function generateId(): string {
@@ -131,15 +131,12 @@ function parseBankCSV(lines: string[], delimiter: string): ImportResult {
     const amount = isDeposit ? deposit : withdrawal;
     const category = categorize(description);
 
-    const direction: "inflow" | "outflow" =
-      isDeposit && !isTransferCategory(category) ? "inflow" : "outflow";
-
     transactions.push({
       id: generateId(),
       date: parseDate(dateStr),
       description: description.trim(),
       amount,
-      direction,
+      direction: isDeposit ? "inflow" : "outflow",
       source: "bank",
       category,
       runningBalance: parseAmount(balanceStr) || undefined,

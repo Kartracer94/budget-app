@@ -6,7 +6,7 @@ import Link from "next/link";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import type { PieLabelRenderProps } from "recharts";
 import { loadTransactions } from "@/lib/store";
-import { Transaction } from "@/lib/types";
+import { Transaction, getDashboardBucket } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -33,7 +33,8 @@ function groupByCategory(
   const groups: Record<string, number> = {};
   for (const t of transactions) {
     if (t.direction !== direction) continue;
-    groups[t.category] = (groups[t.category] || 0) + t.amount;
+    const bucket = getDashboardBucket(t.category);
+    groups[bucket] = (groups[bucket] || 0) + t.amount;
   }
   return Object.entries(groups)
     .sort((a, b) => b[1] - a[1])

@@ -37,14 +37,6 @@ export const CATEGORIES: Record<string, string[]> = {
   Entertainment: ["NETFLIX", "SPOTIFY", "HULU", "DISNEY"],
 };
 
-// Categories that are fund movements, not true income — always treat as transfers
-// even when they appear in the Deposit column
-const TRANSFER_CATEGORIES = new Set(["Transfers", "Credit Card Payment", "Bank Fees", "Interest"]);
-
-export function isTransferCategory(category: string): boolean {
-  return TRANSFER_CATEGORIES.has(category);
-}
-
 export function categorize(description: string): string {
   const upper = description.toUpperCase();
   for (const [category, keywords] of Object.entries(CATEGORIES)) {
@@ -52,5 +44,50 @@ export function categorize(description: string): string {
       return category;
     }
   }
+  return "Other";
+}
+
+/**
+ * Maps granular transaction categories (especially from Amex) into broader
+ * dashboard buckets. The raw category is preserved on each transaction for
+ * the detail view.
+ */
+const DASHBOARD_BUCKET_MAP: Record<string, string> = {
+  // Amex prefixed categories
+  "restaurant": "Dining",
+  "merchandise & supplies-groceries": "Groceries",
+  "merchandise & supplies": "Shopping",
+  "travel-lodging": "Travel",
+  "travel-airline": "Travel",
+  "travel": "Travel",
+  "transportation": "Transportation",
+  "entertainment": "Entertainment",
+  "fees & adjustments": "Fees",
+  "business services": "Business Services",
+  "communication": "Utilities",
+  "other": "Other",
+  // Our own keyword categories pass through as-is
+};
+
+export function getDashboardBucket(category: string): string {
+  const lower = category.toLowerCase();
+
+  // Direct match first
+  if (DASHBOARD_BUCKET_MAP[lower]) {
+    return DASHBOARD_BUCKET_MAP[lower];
+  }
+
+  // Prefix match for Amex sub-categories like "Restaurant-Bar & Café"
+  for (const [prefix, bucket] of Object.entries(DASHBOARD_BUCKET_MAP)) {
+    if (lower.startsWith(prefix)) {
+      return bucket;
+    }
+  }
+
+  // Our keyword-based categories (Payroll, Rent, Transfers, etc.) pass through
+  if (CATEGORIES[category]) {
+    return category;
+  }
+
   return "Other";
 }
