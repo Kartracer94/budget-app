@@ -6,7 +6,6 @@ import { Transaction } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -80,20 +79,24 @@ export default function TransactionsPage() {
               onChange={(e) => setSearch(e.target.value)}
               className="h-9 rounded-md border border-input bg-transparent px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring w-64"
             />
-            <Tabs value={sourceFilter} onValueChange={(v) => setSourceFilter(v as typeof sourceFilter)}>
-              <TabsList>
-                <TabsTrigger value="all">All Sources</TabsTrigger>
-                <TabsTrigger value="bank">Bank</TabsTrigger>
-                <TabsTrigger value="credit_card">Credit Card</TabsTrigger>
-              </TabsList>
-            </Tabs>
-            <Tabs value={directionFilter} onValueChange={(v) => setDirectionFilter(v as typeof directionFilter)}>
-              <TabsList>
-                <TabsTrigger value="all">All Flows</TabsTrigger>
-                <TabsTrigger value="inflow">Inflows</TabsTrigger>
-                <TabsTrigger value="outflow">Outflows</TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <select
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value as typeof sourceFilter)}
+              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="all">All Sources</option>
+              <option value="bank">Bank</option>
+              <option value="credit_card">Credit Card</option>
+            </select>
+            <select
+              value={directionFilter}
+              onChange={(e) => setDirectionFilter(e.target.value as typeof directionFilter)}
+              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="all">All Flows</option>
+              <option value="inflow">Inflows</option>
+              <option value="outflow">Outflows</option>
+            </select>
           </div>
         </CardContent>
       </Card>

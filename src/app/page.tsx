@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { buttonVariants } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const CategoryPieChart = dynamic(
   () => import("@/components/charts").then((mod) => mod.CategoryPieChart),
@@ -152,16 +151,18 @@ function DashboardContent() {
         </div>
 
         {/* Month Filter */}
-        <Tabs value={selectedMonth} onValueChange={setSelectedMonth}>
-          <TabsList className="flex-wrap h-auto gap-1">
-            <TabsTrigger value="all" className="text-xs">All Time</TabsTrigger>
-            {availableMonths.map((m) => (
-              <TabsTrigger key={m} value={m} className="text-xs">
-                {formatMonth(m)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        <select
+          value={selectedMonth}
+          onChange={(e) => setSelectedMonth(e.target.value)}
+          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+        >
+          <option value="all">All Time</option>
+          {availableMonths.map((m) => (
+            <option key={m} value={m}>
+              {formatMonth(m)}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Monthly Bar Chart */}
