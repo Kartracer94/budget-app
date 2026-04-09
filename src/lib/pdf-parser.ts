@@ -251,19 +251,6 @@ export function parseSchwabStockPDF(text: string): ImportResult {
     });
   }
 
-  // Tax withholding outflow
-  if (summary && summary.totalTaxPaid > 0) {
-    transactions.push({
-      id: generateId(),
-      date: isoDate,
-      description: `RSU Tax Withheld — ${company}`,
-      amount: summary.totalTaxPaid,
-      direction: "outflow",
-      source: "stock_rewards",
-      category: "RSU Tax Withheld",
-    });
-  }
-
   // If we got nothing from structured parsing, try a fallback approach
   if (transactions.length === 0) {
     // Look for any dollar amounts and dates in the whole text
@@ -291,17 +278,6 @@ export function parseSchwabStockPDF(text: string): ImportResult {
         taxWithheld: taxPaid,
       });
 
-      if (taxPaid > 0) {
-        transactions.push({
-          id: generateId(),
-          date,
-          description: `RSU Tax Withheld — ${company}`,
-          amount: taxPaid,
-          direction: "outflow",
-          source: "stock_rewards",
-          category: "RSU Tax Withheld",
-        });
-      }
     } else {
       errors.push("Could not extract financial data from the PDF. Please check the file format.");
     }
