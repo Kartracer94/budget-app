@@ -208,7 +208,7 @@ export function parseSchwabStockPDF(text: string): ImportResult {
 export async function extractPDFText(file: File): Promise<string> {
   const pdfjsLib = await import("pdfjs-dist");
   // Use the bundled worker
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
