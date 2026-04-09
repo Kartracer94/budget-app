@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import type { PieLabelRenderProps } from "recharts";
 import { loadTransactions } from "@/lib/store";
 import { Transaction, getDashboardBucket } from "@/lib/types";
@@ -53,6 +53,52 @@ function formatMonth(ym: string): string {
   const [year, month] = ym.split("-");
   const date = new Date(parseInt(year), parseInt(month) - 1);
   return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+function formatMonthShort(ym: string): string {
+  const [year, month] = ym.split("-");
+  const date = new Date(parseInt(year), parseInt(month) - 1);
+  return date.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+}
+
+function getMonthlyTotals(transactions: Transaction[]) {
+  const months: Record<string, { inflow: number; outflow: number }> = {};
+  for (const t of transactions) {
+    const ym = t.date.slice(0, 7);
+    if (!months[ym]) months[ym] = { inflow: 0, outflow: 0 };
+    if (t.direction === "inflow") {
+      months[ym].inflow += t.amount;
+    } else {
+      months[ym].outflow += t.amount;
+    }
+  }
+  return Object.entries(months)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([month, totals]) => ({
+      month: formatMonthShort(month),
+      Inflow: Math.round(totals.inflow * 100) / 100,
+      Outflow: Math.round(totals.outflow * 100) / 100,
+    }));
+}
+
+interface BarTooltipProps {
+  active?: boolean;
+  payload?: Array<{ name: string; value: number; color: string }>;
+  label?: string;
+}
+
+function BarChartTooltip({ active, payload, label }: BarTooltipProps) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-md">
+      <p className="font-medium mb-1">{label}</p>
+      {payload.map((entry) => (
+        <p key={entry.name} className="font-mono" style={{ color: entry.color }}>
+          {entry.name}: {formatCurrency(entry.value)}
+        </p>
+      ))}
+    </div>
+  );
 }
 
 interface PieTooltipProps {
@@ -191,6 +237,8 @@ function DashboardContent() {
   const inflowCategories = groupByCategory(transactions, "inflow");
   const outflowCategories = groupByCategory(transactions, "outflow");
 
+  const monthlyData = useMemo(() => getMonthlyTotals(allTransactions), [allTransactions]);
+
   const recentTransactions = transactions.slice(0, 10);
 
   if (allTransactions.length === 0) {
@@ -232,6 +280,44 @@ function DashboardContent() {
           </TabsList>
         </Tabs>
       </div>
+
+      {/* Monthly Bar Chart */}
+      {monthlyData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">Monthly Inflows vs Outflows</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthlyData} barGap={4}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(0 0% 20%)" />
+                  <XAxis
+                    dataKey="month"
+                    tick={{ fill: "hsl(0 0% 64%)", fontSize: 12 }}
+                    axisLine={{ stroke: "hsl(0 0% 20%)" }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fill: "hsl(0 0% 64%)", fontSize: 12 }}
+                    axisLine={{ stroke: "hsl(0 0% 20%)" }}
+                    tickLine={false}
+                    tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+                  />
+                  <Tooltip content={<BarChartTooltip />} />
+                  <Legend
+                    formatter={(value: string) => (
+                      <span className="text-xs text-foreground">{value}</span>
+                    )}
+                  />
+                  <Bar dataKey="Inflow" fill="#34d399" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Outflow" fill="#f87171" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
