@@ -24,7 +24,7 @@ export const CATEGORIES: Record<string, string[]> = {
   Payroll: ["PAYROLL", "PALMER WEISS", "SAMSARA NETWORKS"],
   "Credit Card Payment": ["AMEX EPAYMENT", "EPAYMENT ACH PMT"],
   Rent: ["APPFOLIO", "CHANDLER PROPERT"],
-  Transfers: ["VENMO PAYMENT", "VENMO CASHOUT", "ZELLE"],
+  Transfers: ["VENMO PAYMENT", "VENMO CASHOUT", "ZELLE", "Electronic Deposit"],
   Insurance: ["NORTHWESTERN MU", "GEICO", "STATE FARM"],
   "ATM / Cash": ["ATM", "CASH WITHDRAWAL"],
   Interest: ["Interest Paid", "INTADJUST"],
@@ -35,8 +35,15 @@ export const CATEGORIES: Record<string, string[]> = {
   Travel: ["HOTEL", "AIRLINE", "AIRBNB", "UNITED", "DELTA", "SOUTHWEST"],
   Utilities: ["PG&E", "COMCAST", "VERIZON", "AT&T"],
   Entertainment: ["NETFLIX", "SPOTIFY", "HULU", "DISNEY"],
-  Deposits: ["Electronic Deposit"],
 };
+
+// Categories that are fund movements, not true income — always treat as transfers
+// even when they appear in the Deposit column
+const TRANSFER_CATEGORIES = new Set(["Transfers", "Credit Card Payment", "Bank Fees", "Interest"]);
+
+export function isTransferCategory(category: string): boolean {
+  return TRANSFER_CATEGORIES.has(category);
+}
 
 export function categorize(description: string): string {
   const upper = description.toUpperCase();

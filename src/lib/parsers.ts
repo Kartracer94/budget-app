@@ -1,4 +1,4 @@
-import { Transaction, ImportResult, categorize } from "./types";
+import { Transaction, ImportResult, categorize, isTransferCategory } from "./types";
 
 let idCounter = 0;
 function generateId(): string {
@@ -94,17 +94,23 @@ function parseBankCSV(lines: string[], delimiter: string): ImportResult {
       continue;
     }
 
-    const isInflow = deposit > 0;
-    const amount = isInflow ? deposit : withdrawal;
+    const isDeposit = deposit > 0;
+    const amount = isDeposit ? deposit : withdrawal;
+    const category = categorize(description);
+
+    // Deposits that are transfers (Venmo cashout, electronic deposits, etc.)
+    // are fund movements, not true income — mark as outflow/transfer
+    const direction: "inflow" | "outflow" =
+      isDeposit && !isTransferCategory(category) ? "inflow" : "outflow";
 
     transactions.push({
       id: generateId(),
       date: parseDate(dateStr),
       description: description.trim(),
       amount,
-      direction: isInflow ? "inflow" : "outflow",
+      direction,
       source: "bank",
-      category: categorize(description),
+      category,
       runningBalance: parseAmount(balanceStr) || undefined,
     });
   }
