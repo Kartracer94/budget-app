@@ -19,6 +19,92 @@ function parseAmount(raw: string): number {
   return parseFloat(raw.replace(/[$,]/g, "")) || 0;
 }
 
+export function isSchwabStockPDF(text: string): boolean {
+  const normalized = text.replace(/\s+/g, " ").toLowerCase();
+  return (
+    normalized.includes("restricted stock") &&
+    (normalized.includes("lapse") || normalized.includes("exercise date"))
+  );
+}
+
+/**
+ * Extract all dollar amounts from text
+ */
+function findDollarAmounts(text: string): number[] {
+  const matches = text.match(/\$[\d,]+\.\d{2}/g) || [];
+  return matches.map(parseAmount);
+}
+
+/**
+ * Extract all dates (MM/DD/YY or MM/DD/YYYY) from text
+ */
+function findDates(text: string): string[] {
+  const matches = text.match(/\d{2}\/\d{2}\/\d{2,4}/g) || [];
+  return matches;
+}
+
+/**
+ * Extract Award IDs (SG3-XXXXX pattern)
+ */
+function findAwardIds(text: string): string[] {
+  const matches = text.match(/SG\d-\d{5}/g) || [];
+  return [...new Set(matches)];
+}
+
+/**
+ * Parse the Lapse Summary section from page 2.
+ * The summary has a known structure — we extract by the order of values.
+ */
+function parseLapseSummary(pageText: string) {
+  const normalized = pageText.replace(/\s+/g, " ");
+
+  // Check this page has Lapse Summary
+  if (!/lapse\s*summary/i.test(normalized)) return null;
+
+  const dates = findDates(normalized);
+  const amounts = findDollarAmounts(normalized);
+
+  // Extract the exercise date (first date on the page)
+  const exerciseDate = dates[0] || "";
+
+  // Look for Transaction Share Amount — a bare integer after "Exercise Date" line
+  const sharesMatch = normalized.match(/(?:exercise\s*date|transaction\s*share)\D+(\d{2,4})\b/i);
+  const totalShares = sharesMatch ? parseInt(sharesMatch[1]) : 0;
+
+  // Shares Withheld — a decimal number like 182.0000
+  const withheldMatch = normalized.match(/(\d+)\.0000\s/);
+  const sharesWithheld = withheldMatch ? parseInt(withheldMatch[1]) : 0;
+
+  // Find key dollar amounts from Lapse Summary
+  // Order in text: Total Share Cost ($0.00), Gross Proceeds, then later Net Cash, Net Value, Net Proceeds
+  // Also Total Tax Paid appears in Tax Summary
+
+  // Gross Proceeds is typically the largest non-tax amount
+  const grossProceeds = amounts.length > 0 ? Math.max(...amounts.filter(a => a > 100)) : 0;
+
+  // Net Value/Proceeds — appears after "Net Value" or "Net Proceeds"
+  const netMatch = normalized.match(/net\s*(?:value|proceeds)\s*\$?([\d,]+\.\d{2})/i);
+  const netValue = netMatch ? parseAmount(netMatch[1]) : 0;
+
+  // Total Tax Paid
+  const taxMatch = normalized.match(/total\s*tax\s*paid\s*\$?([\d,]+\.\d{2})/i);
+  const totalTaxPaid = taxMatch ? parseAmount(taxMatch[1]) : 0;
+
+  // Net Shares
+  const netSharesMatch = normalized.match(/net\s*shares\s*(\d+)/i);
+  const netShares = netSharesMatch ? parseInt(netSharesMatch[1]) : 0;
+
+  return {
+    exerciseDate,
+    totalShares,
+    sharesWithheld,
+    netShares,
+    grossProceeds,
+    netValue,
+    totalTaxPaid,
+  };
+}
+
 interface LapseDetail {
   awardId: string;
   awardDate: string;
@@ -31,99 +117,81 @@ interface LapseDetail {
   fairMarketValue: number;
 }
 
-interface LapseSummary {
-  exerciseDate: string;
-  totalShares: number;
-  sharesWithheld: number;
-  netShares: number;
-  grossProceeds: number;
-  netValue: number;
-  totalTaxPaid: number;
-}
+/**
+ * Parse Lapse Detail sections from page 3+.
+ * Each detail block has an Award ID and associated amounts.
+ */
+function parseLapseDetails(allText: string): LapseDetail[] {
+  const normalized = allText.replace(/\s+/g, " ");
+  const awardIds = findAwardIds(normalized);
 
-function extractField(text: string, label: string): string | null {
-  // Match "Label" followed by value on the same line or after whitespace
-  const patterns = [
-    new RegExp(`${label}\\s+([\\d/]+|\\$[\\d,.]+|[\\d,.]+)`, "i"),
-    new RegExp(`${label}\\s*\\n\\s*([\\d/]+|\\$[\\d,.]+|[\\d,.]+)`, "i"),
-  ];
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match) return match[1].trim();
-  }
-  return null;
-}
+  if (awardIds.length === 0) return [];
 
-function parseLapseSummary(text: string): LapseSummary | null {
-  const summaryMatch = text.match(/Lapse Summary[\s\S]*?(?=Tax Summary|Lapse Detail|$)/i);
-  if (!summaryMatch) return null;
-  const section = summaryMatch[0];
-
-  const exerciseDate = extractField(section, "Exercise Date");
-  const totalShares = extractField(section, "Transaction Share Amount");
-  const sharesWithheld = extractField(section, "Shares Withheld");
-  const netShares = extractField(section, "Net Shares");
-  const grossProceeds = extractField(section, "Gross Proceeds");
-  const netValue = extractField(section, "Net Value");
-
-  // Get total tax from Tax Summary
-  const taxMatch = text.match(/Total Tax Paid\s+\$?([\d,.]+)/i);
-  const totalTaxPaid = taxMatch ? parseAmount(taxMatch[1]) : 0;
-
-  if (!exerciseDate || !grossProceeds) return null;
-
-  return {
-    exerciseDate: exerciseDate,
-    totalShares: totalShares ? parseFloat(totalShares) : 0,
-    sharesWithheld: sharesWithheld ? parseFloat(sharesWithheld) : 0,
-    netShares: netShares ? parseFloat(netShares) : 0,
-    grossProceeds: parseAmount(grossProceeds),
-    netValue: netValue ? parseAmount(netValue) : 0,
-    totalTaxPaid,
-  };
-}
-
-function parseLapseDetails(text: string): LapseDetail[] {
   const details: LapseDetail[] = [];
-  // Split on "Lapse Detail - RSU" sections
-  const sections = text.split(/Lapse Detail\s*-\s*RSU/i).slice(1);
 
-  for (const section of sections) {
-    const awardId = extractField(section, "Award ID");
-    const awardDate = extractField(section, "Award Date");
-    const exerciseDate = extractField(section, "Exercise Date");
-    const transactionShares = extractField(section, "Transaction Share Amount");
-    const sharesWithheld = extractField(section, "Shares Withheld");
-    const netShares = extractField(section, "Net Shares");
-    const grossProceeds = extractField(section, "Gross Proceeds");
-    const netValue = extractField(section, "Net Value");
+  // Split text around each "Lapse Detail" occurrence
+  const detailBlocks = normalized.split(/lapse\s*detail\s*-?\s*rsu/i).slice(1);
 
-    // Try to find FMV from tax details
-    const fmvMatch = section.match(/\$(\d+\.\d{4})/);
+  for (const block of detailBlocks) {
+    const awardIdMatch = block.match(/SG\d-\d{5}/);
+    if (!awardIdMatch) continue;
 
-    if (awardId && grossProceeds) {
+    const awardId = awardIdMatch[0];
+    const dates = findDates(block);
+    const amounts = findDollarAmounts(block);
+
+    // Award Date is typically the first date, Exercise Date the second
+    const awardDate = dates[0] || "";
+    const exerciseDate = dates[1] || dates[0] || "";
+
+    // Transaction Share Amount — look for bare integer after share-related text
+    const txnSharesMatch = block.match(/(?:transaction\s*share\s*amount|amount)\s*(\d{2,4})\b/i)
+      || block.match(/\b(\d{2,4})\s*(?:0\.0000|shares?\s*sold)/i);
+    const transactionShares = txnSharesMatch ? parseInt(txnSharesMatch[1]) : 0;
+
+    // Shares Withheld
+    const withheldMatch = block.match(/(?:shares?\s*withheld|withheld)\s*(\d+)/i)
+      || block.match(/(\d+)\.0000\s/);
+    const sharesWithheld = withheldMatch ? parseInt(withheldMatch[1]) : 0;
+
+    // Net Shares
+    const netSharesMatch = block.match(/net\s*shares?\s*(\d+)/i);
+    const netShares = netSharesMatch ? parseInt(netSharesMatch[1]) : 0;
+
+    // Gross Proceeds — largest dollar amount in the block
+    const grossProceeds = amounts.length > 0 ? Math.max(...amounts) : 0;
+
+    // Net Value — look for the text pattern or take second-largest amount
+    const netValueMatch = block.match(/net\s*(?:value|proceeds)\s*\$?([\d,]+\.\d{2})/i);
+    let netValue = netValueMatch ? parseAmount(netValueMatch[1]) : 0;
+
+    // If no explicit net value found, look for repeated amount (net value = net proceeds)
+    if (!netValue && amounts.length >= 2) {
+      const sorted = [...amounts].sort((a, b) => b - a);
+      // Net value is usually the second distinct amount
+      netValue = sorted.find(a => a !== grossProceeds && a > 0) || 0;
+    }
+
+    // FMV
+    const fmvMatch = block.match(/\$(\d+\.\d{4})/);
+    const fmv = fmvMatch ? parseFloat(fmvMatch[1]) : 0;
+
+    if (grossProceeds > 0) {
       details.push({
-        awardId: awardId,
-        awardDate: awardDate || "",
-        exerciseDate: exerciseDate || "",
-        transactionShares: transactionShares ? parseFloat(transactionShares) : 0,
-        sharesWithheld: sharesWithheld ? parseFloat(sharesWithheld) : 0,
-        netShares: netShares ? parseFloat(netShares) : 0,
-        grossProceeds: parseAmount(grossProceeds),
-        netValue: netValue ? parseAmount(netValue) : 0,
-        fairMarketValue: fmvMatch ? parseFloat(fmvMatch[1]) : 0,
+        awardId,
+        awardDate,
+        exerciseDate,
+        transactionShares,
+        sharesWithheld,
+        netShares,
+        grossProceeds,
+        netValue,
+        fairMarketValue: fmv,
       });
     }
   }
 
   return details;
-}
-
-export function isSchwabStockPDF(text: string): boolean {
-  return (
-    text.includes("Restricted Stock Activity") &&
-    (text.includes("Lapse Summary") || text.includes("Lapse Detail"))
-  );
 }
 
 export function parseSchwabStockPDF(text: string): ImportResult {
@@ -133,29 +201,26 @@ export function parseSchwabStockPDF(text: string): ImportResult {
   const summary = parseLapseSummary(text);
   const details = parseLapseDetails(text);
 
-  // Determine exercise date from summary or first detail
+  // Determine exercise date
   const exerciseDate = summary?.exerciseDate || details[0]?.exerciseDate || "";
   const isoDate = parseDate(exerciseDate);
 
   // Detect company name
-  const companyMatch = text.match(/(?:Samsara|[\w]+)\s+Inc\./i);
+  const companyMatch = text.match(/(Samsara|[\w]+)\s+Inc\./i);
   const company = companyMatch ? companyMatch[0] : "Company";
 
-  // Find FMV from Tax Details section
-  const fmvMatch = text.match(/Fair Market\s*Value[\s\S]*?\$(\d+\.\d{4})/i);
+  // Find FMV from Tax Details
+  const fmvMatch = text.match(/\$(\d+\.\d{4})/);
   const fmv = fmvMatch ? parseFloat(fmvMatch[1]) : 0;
 
   if (details.length > 0) {
-    // Create individual transactions per award
     for (const detail of details) {
       const detailDate = parseDate(detail.exerciseDate || exerciseDate);
-
-      // Net value (inflow) — what you actually received
       transactions.push({
         id: generateId(),
         date: detailDate,
         description: `RSU Vest — ${company} (${detail.awardId})`,
-        amount: detail.netValue,
+        amount: detail.netValue || detail.grossProceeds,
         direction: "inflow",
         source: "stock_rewards",
         category: "RSU Vest",
@@ -164,17 +229,16 @@ export function parseSchwabStockPDF(text: string): ImportResult {
         sharesWithheld: detail.sharesWithheld,
         netShares: detail.netShares,
         grossProceeds: detail.grossProceeds,
-        taxWithheld: detail.grossProceeds - detail.netValue,
+        taxWithheld: detail.grossProceeds - (detail.netValue || detail.grossProceeds),
         fairMarketValue: detail.fairMarketValue || fmv,
       });
     }
   } else if (summary) {
-    // Fallback: single summary transaction
     transactions.push({
       id: generateId(),
       date: isoDate,
       description: `RSU Vest — ${company}`,
-      amount: summary.netValue,
+      amount: summary.netValue || summary.grossProceeds,
       direction: "inflow",
       source: "stock_rewards",
       category: "RSU Vest",
@@ -185,11 +249,9 @@ export function parseSchwabStockPDF(text: string): ImportResult {
       taxWithheld: summary.totalTaxPaid,
       fairMarketValue: fmv,
     });
-  } else {
-    errors.push("Could not find Lapse Summary or Lapse Details in the PDF.");
   }
 
-  // Also create a tax withholding outflow transaction for the total
+  // Tax withholding outflow
   if (summary && summary.totalTaxPaid > 0) {
     transactions.push({
       id: generateId(),
@@ -202,12 +264,54 @@ export function parseSchwabStockPDF(text: string): ImportResult {
     });
   }
 
+  // If we got nothing from structured parsing, try a fallback approach
+  if (transactions.length === 0) {
+    // Look for any dollar amounts and dates in the whole text
+    const allAmounts = findDollarAmounts(text);
+    const allDates = findDates(text);
+
+    if (allAmounts.length > 0 && allDates.length > 0) {
+      const grossProceeds = Math.max(...allAmounts);
+      const date = parseDate(allDates[0]);
+
+      // Find tax total
+      const taxMatch = text.replace(/\s+/g, " ").match(/total\s*tax\s*paid\s*\$?([\d,]+\.\d{2})/i);
+      const taxPaid = taxMatch ? parseAmount(taxMatch[1]) : 0;
+      const netValue = taxPaid > 0 ? grossProceeds - taxPaid : grossProceeds;
+
+      transactions.push({
+        id: generateId(),
+        date,
+        description: `RSU Vest — ${company}`,
+        amount: netValue,
+        direction: "inflow",
+        source: "stock_rewards",
+        category: "RSU Vest",
+        grossProceeds,
+        taxWithheld: taxPaid,
+      });
+
+      if (taxPaid > 0) {
+        transactions.push({
+          id: generateId(),
+          date,
+          description: `RSU Tax Withheld — ${company}`,
+          amount: taxPaid,
+          direction: "outflow",
+          source: "stock_rewards",
+          category: "RSU Tax Withheld",
+        });
+      }
+    } else {
+      errors.push("Could not extract financial data from the PDF. Please check the file format.");
+    }
+  }
+
   return { source: "stock_rewards", transactions, errors };
 }
 
 export async function extractPDFText(file: File): Promise<string> {
   const pdfjsLib = await import("pdfjs-dist");
-  // Use the bundled worker
   pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
   const arrayBuffer = await file.arrayBuffer();
@@ -217,11 +321,20 @@ export async function extractPDFText(file: File): Promise<string> {
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
-    const text = content.items
-      .map((item) => ("str" in item ? item.str : ""))
-      .join(" ");
-    pages.push(text);
+    // Join items with spaces, add newlines between items that have large Y gaps
+    let lastY: number | null = null;
+    const parts: string[] = [];
+    for (const item of content.items) {
+      if (!("str" in item) || !item.str) continue;
+      const y = "transform" in item ? (item.transform as number[])[5] : 0;
+      if (lastY !== null && Math.abs(y - lastY) > 5) {
+        parts.push("\n");
+      }
+      parts.push(item.str);
+      lastY = y;
+    }
+    pages.push(parts.join(" "));
   }
 
-  return pages.join("\n");
+  return pages.join("\n\n");
 }
