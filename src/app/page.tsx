@@ -256,7 +256,7 @@ function DashboardContent() {
                       }
                       className="shrink-0 text-xs"
                     >
-                      {t.source === "bank" ? "Bank" : "CC"}
+                      {t.source === "bank" ? "Bank" : t.source === "stock_rewards" ? "RSU" : "CC"}
                     </Badge>
                     <div className="min-w-0">
                       <p className="text-sm truncate">{t.description}</p>

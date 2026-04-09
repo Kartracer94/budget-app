@@ -1,4 +1,4 @@
-export type TransactionSource = "bank" | "credit_card";
+export type TransactionSource = "bank" | "credit_card" | "stock_rewards";
 export type FlowDirection = "inflow" | "outflow";
 
 export interface Transaction {
@@ -12,6 +12,14 @@ export interface Transaction {
   cardMember?: string;
   accountNumber?: string;
   runningBalance?: number;
+  // Stock reward fields
+  awardId?: string;
+  sharesVested?: number;
+  sharesWithheld?: number;
+  netShares?: number;
+  grossProceeds?: number;
+  taxWithheld?: number;
+  fairMarketValue?: number;
 }
 
 export interface ImportResult {
@@ -66,7 +74,10 @@ const DASHBOARD_BUCKET_MAP: Record<string, string> = {
   "business services": "Business Services",
   "communication": "Utilities",
   "other": "Other",
-  // Our own keyword categories pass through as-is
+  // Stock rewards
+  "rsu vest": "Stock Rewards",
+  "rsu tax withheld": "Stock Rewards",
+  "stock rewards": "Stock Rewards",
 };
 
 export function getDashboardBucket(category: string): string {

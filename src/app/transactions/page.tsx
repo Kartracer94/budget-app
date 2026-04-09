@@ -87,6 +87,7 @@ export default function TransactionsPage() {
               <option value="all">All Sources</option>
               <option value="bank">Bank</option>
               <option value="credit_card">Credit Card</option>
+              <option value="stock_rewards">Stock Rewards</option>
             </select>
             <select
               value={directionFilter}
@@ -141,7 +142,7 @@ export default function TransactionsPage() {
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary" className="text-xs">
-                        {t.source === "bank" ? "Bank" : "CC"}
+                        {t.source === "bank" ? "Bank" : t.source === "stock_rewards" ? "RSU" : "CC"}
                       </Badge>
                     </TableCell>
                     <TableCell>
