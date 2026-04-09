@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, Suspense } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -83,28 +83,35 @@ function getMonthlyTotals(transactions: Transaction[]) {
     }));
 }
 
-function DashboardContent() {
+function ImportBanner() {
   const searchParams = useSearchParams();
+  const imported = searchParams.get("imported");
+  if (!imported) return null;
+  return (
+    <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
+      Successfully imported {imported} transactions.
+    </div>
+  );
+}
+
+function DashboardContent() {
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
   const [mounted, setMounted] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState<string>("all");
-
-  const imported = searchParams.get("imported");
+  const [selectedMonth, setSelectedMonth] = useState("all");
 
   useEffect(() => {
-    const txns = loadTransactions();
-    setAllTransactions(txns);
+    setAllTransactions(loadTransactions());
     setMounted(true);
   }, []);
 
-  const availableMonths = useMemo(() => getAvailableMonths(allTransactions), [allTransactions]);
-
-  const transactions = useMemo(() => {
-    if (selectedMonth === "all") return allTransactions;
-    return allTransactions.filter((t) => t.date.startsWith(selectedMonth));
-  }, [allTransactions, selectedMonth]);
-
   if (!mounted) return null;
+
+  const availableMonths = getAvailableMonths(allTransactions);
+
+  const transactions =
+    selectedMonth === "all"
+      ? allTransactions
+      : allTransactions.filter((t) => t.date.startsWith(selectedMonth));
 
   const totalInflow = transactions
     .filter((t) => t.direction === "inflow")
@@ -118,9 +125,7 @@ function DashboardContent() {
 
   const inflowCategories = groupByCategory(transactions, "inflow");
   const outflowCategories = groupByCategory(transactions, "outflow");
-
-  const monthlyData = useMemo(() => getMonthlyTotals(allTransactions), [allTransactions]);
-
+  const monthlyData = getMonthlyTotals(allTransactions);
   const recentTransactions = transactions.slice(0, 10);
 
   if (allTransactions.length === 0) {
@@ -136,11 +141,9 @@ function DashboardContent() {
 
   return (
     <div className="space-y-6">
-      {imported && (
-        <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
-          Successfully imported {imported} transactions.
-        </div>
-      )}
+      <Suspense>
+        <ImportBanner />
+      </Suspense>
 
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
@@ -150,7 +153,6 @@ function DashboardContent() {
           </p>
         </div>
 
-        {/* Month Filter */}
         <select
           value={selectedMonth}
           onChange={(e) => setSelectedMonth(e.target.value)}
@@ -284,9 +286,5 @@ function DashboardContent() {
 }
 
 export default function DashboardPage() {
-  return (
-    <Suspense>
-      <DashboardContent />
-    </Suspense>
-  );
+  return <DashboardContent />;
 }
